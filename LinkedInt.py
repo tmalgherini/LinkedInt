@@ -27,13 +27,16 @@ import string
 from bs4 import BeautifulSoup
 from thready import threaded
 
-reload(sys)
-sys.setdefaultencoding('utf-8')
+#reload(sys)
+#sys.setdefaultencoding('utf-8')
 
 """ Setup Argument Parameters """
 parser = argparse.ArgumentParser(description='Discovery LinkedIn')
 parser.add_argument('-u', '--keywords', help='Keywords to search')
 parser.add_argument('-o', '--output', help='Output file (do not include extentions)')
+parser.add_argument('-i', '--companyid', help="companyID")
+parser.add_argument('-d', '--domain', help="email domain")
+parser.add_argument('-f', '--format', help="email format (full,firstlast,firstmlast,flast,firstl,first.last,fmlast,lastfirst)")
 args = parser.parse_args()
 config = ConfigParser.RawConfigParser()
 config.read('LinkedInt.cfg')
@@ -79,6 +82,18 @@ def loadPage(client, url, data=None):
 		return ''.join(response.readlines())
 	except:
 		sys.exit(0)
+
+# convert "lastname, JUNK, ..." to "lastname"
+# or "lastname JUNK .."
+def sanitize_name(name):
+    new_name = name
+    if name.find(", ") > 0:
+        new_name = name[:name.find(", ")]
+    match = re.search("(?:[A-Za-z](?:[a-z]+|[ ]|[']))+( +[A-Z]{2,}.*)", new_name)
+    if match:
+        return new_name[:match.start(1)]
+    else:
+        return new_name
 
 def get_search():
 
@@ -217,6 +232,10 @@ def get_search():
                     print "[*] No picture found for %s %s, %s" % (data_firstname, data_lastname, data_occupation)
                     data_picture = ""
 
+                #try to remove junk from lastname, clearly people on linkedin dont know what last name means?
+                original_lastname = data_lastname
+                data_lastname = sanitize_name(data_lastname)
+                
                 # incase the last name is multi part, we will split it down
 
                 parts = data_lastname.split()
@@ -284,12 +303,14 @@ def get_search():
                     "<td>%s</td>" \
                     "<a>" % (data_slug, data_picture, data_slug, name, email, data_occupation, data_location)
                 
-                csv.append('"%s","%s","%s","%s","%s", "%s"' % (data_firstname, data_lastname, name, email, data_occupation, data_location.replace(",",";")))
+                
+
+                csv.append( ('"%s","%s","%s","%s","%s", "%s"' % (data_firstname, original_lastname, name, email, data_occupation, data_location.replace(",",";")) ).encode("utf-8"))
                 foot = "</table></center>"
                 f = open('{}.html'.format(outfile), 'wb')
                 f.write(css)
                 f.write(header)
-                f.write(body)
+                f.write(body.encode("utf-8"))
                 f.write(foot)
                 f.close()
                 f = open('{}.csv'.format(outfile), 'wb')
@@ -327,94 +348,105 @@ if __name__ == '__main__':
     search = args.keywords if args.keywords!=None else raw_input("[*] Enter search Keywords (use quotes for more precise results)\n")
     print 
     outfile = args.output if args.output!=None else raw_input("[*] Enter filename for output (exclude file extension)\n")
-    print 
-    while True:
-        bCompany = raw_input("[*] Filter by Company? (Y/N): \n")
-        if bCompany.lower() == "y" or bCompany.lower() == "n":
-            break
+    print
+
+    if not args.companyid:
+        while True:
+            bCompany = raw_input("[*] Filter by Company? (Y/N): \n")
+            if bCompany.lower() == "y" or bCompany.lower() == "n":
+                break
+            else:
+                print "[!] Incorrect choice"
+
+        if bCompany.lower() == "y":
+            bCompany = True
         else:
-            print "[!] Incorrect choice"
+            bCompany = False
 
-    if bCompany.lower() == "y":
-        bCompany = True
-    else:
-        bCompany = False
+        bAuto = True
+        bSpecific = 0
+        prefix = ""
+        suffix = ""
 
-    bAuto = True
-    bSpecific = 0
-    prefix = ""
-    suffix = ""
-
-    print
-
-    if bCompany:
-	    while True:
-	        bSpecific = raw_input("[*] Specify a Company ID (Provide ID or leave blank to automate): \n")
-	        if bSpecific != "":
-	            bAuto = False
-	            if bSpecific != 0:
-	                try:
-	                    int(bSpecific)
-	                    break
-	                except:
-	                    print "[!] Incorrect choice, the ID either has to be a number or blank"
-	                
-	            else:
-	                print "[!] Incorrect choice, the ID either has to be a number or blank"
-	        else:
-	            bAuto = True
-	            break
-
-    print
-
-    
-    while True:
-        suffix = raw_input("[*] Enter e-mail domain suffix (eg. contoso.com): \n")
-        suffix = suffix.lower()
-        if "." in suffix:
-            break
-        else:
-            print "[!] Incorrect e-mail? There's no dot"
-
-    print
-
-    while True:
-        prefix = raw_input("[*] Select a prefix for e-mail generation (auto,full,firstlast,firstmlast,flast,firstl,first.last,fmlast,lastfirst): \n")
-        prefix = prefix.lower()
         print
-        if prefix == "full" or prefix == "firstlast" or prefix == "firstmlast" or prefix == "flast" or prefix == "firstl" or prefix =="first" or prefix == "first.last" or prefix == "fmlast" or prefix == "lastfirst":
-            break
-        elif prefix == "auto":
-            #if auto prefix then we want to use hunter IO to find it.
-            print "[*] Automatically using Hunter IO to determine best Prefix"
-            url = "https://hunter.io/trial/v2/domain-search?offset=0&domain=%s&format=json" % suffix
-            r = requests.get(url)
-            content = json.loads(r.text)
-            if "status" in content:
-                print "[!] Rate limited by Hunter IO trial"
-                url = "https://api.hunter.io/v2/domain-search?domain=%s&api_key=%s" % (suffix, api_key)
-                #print url
+
+        if bCompany:
+    	    while True:
+    	        bSpecific = raw_input("[*] Specify a Company ID (Provide ID or leave blank to automate): \n")
+    	        if bSpecific != "":
+    	            bAuto = False
+    	            if bSpecific != 0:
+    	                try:
+    	                    int(bSpecific)
+    	                    break
+    	                except:
+    	                    print "[!] Incorrect choice, the ID either has to be a number or blank"
+    	                
+    	            else:
+    	                print "[!] Incorrect choice, the ID either has to be a number or blank"
+    	        else:
+    	            bAuto = True
+    	            break
+    else:
+        bCompany = True
+        bSpecific = int(args.companyid)
+        bAuto = False
+
+    print
+
+    if not args.domain:
+        while True:
+            suffix = raw_input("[*] Enter e-mail domain suffix (eg. contoso.com): \n")
+            suffix = suffix.lower()
+            if "." in suffix:
+                break
+            else:
+                print "[!] Incorrect e-mail? There's no dot"
+    else:
+        suffix = args.domain
+
+    print
+
+    if not args.format or not args.format in ["full","firstlast","firstmlast","flast","firstl","first.last","fmlast","lastfirst"]:
+        while True:
+            prefix = raw_input("[*] Select a prefix for e-mail generation (auto,full,firstlast,firstmlast,flast,firstl,first.last,fmlast,lastfirst): \n")
+            prefix = prefix.lower()
+            print
+            if prefix == "full" or prefix == "firstlast" or prefix == "firstmlast" or prefix == "flast" or prefix == "firstl" or prefix =="first" or prefix == "first.last" or prefix == "fmlast" or prefix == "lastfirst":
+                break
+            elif prefix == "auto":
+                #if auto prefix then we want to use hunter IO to find it.
+                print "[*] Automatically using Hunter IO to determine best Prefix"
+                url = "https://hunter.io/trial/v2/domain-search?offset=0&domain=%s&format=json" % suffix
                 r = requests.get(url)
                 content = json.loads(r.text)
                 if "status" in content:
-                    print "[!] Rate limited by Hunter IO Key"
-                    continue
-            #print content
-            prefix = content['data']['pattern']
-            print "[!] %s" % prefix
-            if prefix:
-                prefix = prefix.replace("{","").replace("}", "")
-                if prefix == "full" or prefix == "firstlast" or prefix == "firstmlast" or prefix == "flast" or prefix == "firstl" or prefix =="first" or prefix == "first.last" or prefix == "fmlast" or prefix == "lastfirst":
-                    print "[+] Found %s prefix" % prefix
-                    break
+                    print "[!] Rate limited by Hunter IO trial"
+                    url = "https://api.hunter.io/v2/domain-search?domain=%s&api_key=%s" % (suffix, api_key)
+                    #print url
+                    r = requests.get(url)
+                    content = json.loads(r.text)
+                    if "status" in content:
+                        print "[!] Rate limited by Hunter IO Key"
+                        continue
+                #print content
+                prefix = content['data']['pattern']
+                print "[!] %s" % prefix
+                if prefix:
+                    prefix = prefix.replace("{","").replace("}", "")
+                    if prefix == "full" or prefix == "firstlast" or prefix == "firstmlast" or prefix == "flast" or prefix == "firstl" or prefix =="first" or prefix == "first.last" or prefix == "fmlast" or prefix == "lastfirst":
+                        print "[+] Found %s prefix" % prefix
+                        break
+                    else:
+                        print "[!] Automatic prefix search failed, please insert a manual choice"
+                        continue
                 else:
                     print "[!] Automatic prefix search failed, please insert a manual choice"
                     continue
             else:
-                print "[!] Automatic prefix search failed, please insert a manual choice"
-                continue
-        else:
-            print "[!] Incorrect choice, please select a value from (auto,full,firstlast,firstmlast,flast,firstl,first.last,fmlast)"
+                print "[!] Incorrect choice, please select a value from (auto,full,firstlast,firstmlast,flast,firstl,first.last,fmlast)"
+    else:
+        prefix = args.format
 
     print 
 
