@@ -47,7 +47,7 @@ def login(username, password):
     csrf = parse.find("input", {"name":"loginCsrfParam"}).get("value")
     login_data = f"session_key={quote(username)}&session_password={quote(password)}&loginCsrfParam={csrf}"
     headers["Content-Type"] = "application/x-www-form-urlencoded"
-    r = s.post("https://www.linkedin.com/checkpoint/lg/login-submit", allow_redirects=False, headers = headers, data=login_data, verify=False, proxies=proxies)
+    r = s.post("https://www.linkedin.com/checkpoint/lg/login-submit", allow_redirects=False, headers = headers, data=login_data, verify=True, proxies=None)
     if r.status_code == 403 or not r.cookies.get("li_at"):
         err("login request failed")
         exit(-1)
@@ -157,7 +157,7 @@ def get_search(companyID):
     headers = {'Csrf-Token':'ajax:0397788525211216808', 'X-RestLi-Protocol-Version':'2.0.0'}
     cookies['JSESSIONID'] = 'ajax:0397788525211216808'
     #print(url)
-    r = requests.get(url, cookies=cookies, headers=headers, verify=False, proxies=proxies)
+    r = requests.get(url, cookies=cookies, headers=headers, verify=True, proxies=None)
     content = json.loads(r.text)
     data_total = content['elements'][0]['total']
 
@@ -188,7 +188,7 @@ def get_search(companyID):
         else:
             url = "https://www.linkedin.com/voyager/api/search/cluster?count=40&guides=List(v->PEOPLE,facetCurrentCompany->%s)&keywords=%s&origin=OTHER&q=guided&start=%i" % (companyID, search, p*40)
         #print(url)
-        r = requests.get(url, cookies=cookies, headers=headers, verify=False, proxies=proxies)
+        r = requests.get(url, cookies=cookies, headers=headers, verify=True, proxies=None)
         content = r.text.encode('UTF-8')
         content = json.loads(content)
         print(("[*] Fetching page %i with %i results" % ((p),len(content['elements'][0]['elements']))))
